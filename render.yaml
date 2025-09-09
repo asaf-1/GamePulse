@@ -22,6 +22,6 @@ services:
   - type: web
     name: gamepulse-site
     env: static
-    plan: free
-    region: frankfurt
     staticPublishPath: .
+    # buildCommand אופציונלי. אם אין לך build, השאר ריק:
+    # buildCommand: ""
