@@ -19,6 +19,9 @@ services:
       - key: ESCAPIST_RSS
         value: https://www.escapistmagazine.com/v2/feed/
 
-  - type: static
+  - type: web
     name: gamepulse-site
+    env: static
+    plan: free
+    region: frankfurt
     staticPublishPath: .
