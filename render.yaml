@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: gamepulse-news-service
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: functions/api
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: IGN_RSS
+        value: https://feeds.ign.com/ign/all
+      - key: EUROGAMER_RSS
+        value: https://www.eurogamer.net/?format=rss
+      - key: GAMESPOT_RSS
+        value: https://www.gamespot.com/feeds/mashup/
+      - key: RPS_RSS
+        value: https://www.rockpapershotgun.com/feed
+      - key: ESCAPIST_RSS
+        value: https://www.escapistmagazine.com/v2/feed/
+
+  - type: static
+    name: gamepulse-site
+    staticPublishPath: .

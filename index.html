@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GamePulse | Latest Gaming News</title>
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- AOS (animations) -->
+  <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+  <!-- three.js + Vanta -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.globe.min.js"></script>
+  <!-- Feather icons -->
+  <script src="https://unpkg.com/feather-icons"></script>
+
+  <style>
+    html { scroll-behavior: smooth; }
+    .gradient-bg { background: linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%); }
+    .nav-active { color:#a78bfa !important; }
+    /* במקום @apply: */
+    .chip{
+      display:inline-block;font-size:.75rem;line-height:1rem;
+      background-color:#374151;padding:.25rem .5rem;border-radius:.25rem
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans">
+
+  <!-- NAV -->
+  <nav class="gradient-bg sticky top-0 z-50 shadow-lg">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+      <a href="#home" class="flex items-center space-x-2 font-bold text-2xl bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
+        <i data-feather="activity" class="text-purple-300"></i><span>GamePulse</span>
+      </a>
+
+      <!-- desktop -->
+      <div class="hidden md:flex items-center space-x-8 font-medium">
+        <a data-nav href="#home" class="hover:text-purple-400 transition">Home</a>
+        <a data-nav href="#news" class="hover:text-purple-400 transition">News</a>
+        <a data-nav href="#reviews" class="hover:text-purple-400 transition">Reviews</a>
+        <a data-nav href="#guides" class="hover:text-purple-400 transition">Guides</a>
+        <a data-nav href="#community" class="hover:text-purple-400 transition">Community</a>
+      </div>
+
+      <!-- mobile -->
+      <button id="menuBtn" class="md:hidden text-gray-300 hover:text-white" aria-label="menu">
+        <i data-feather="menu"></i>
+      </button>
+    </div>
+
+    <!-- mobile dropdown -->
+    <div id="mobileMenu" class="hidden md:hidden border-t border-gray-800">
+      <div class="container mx-auto px-4 py-3 space-y-2">
+        <a data-nav href="#home" class="block hover:text-purple-400">Home</a>
+        <a data-nav href="#news" class="block hover:text-purple-400">News</a>
+        <a data-nav href="#reviews" class="block hover:text-purple-400">Reviews</a>
+        <a data-nav href="#guides" class="block hover:text-purple-400">Guides</a>
+        <a data-nav href="#community" class="block hover:text-purple-400">Community</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section id="home" class="relative overflow-hidden gradient-bg">
+    <div class="absolute inset-0 z-0 opacity-20"><div id="vanta-bg" class="w-full h-full"></div></div>
+    <div class="container mx-auto px-4 py-20 md:py-32 relative z-10 text-center" data-aos="fade-up">
+      <h1 class="text-4xl md:text-6xl font-extrabold mb-6 bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
+        Stay Ahead in the Game
+      </h1>
+      <p class="text-xl md:text-2xl text-gray-300 mb-8">
+        Get the latest gaming news, reviews, and guides from the most passionate community in gaming.
+      </p>
+      <div class="flex flex-col md:flex-row justify-center gap-4">
+        <a href="#news" class="bg-purple-600 hover:bg-purple-700 px-6 py-3 rounded-lg font-medium transition inline-flex items-center justify-center">
+          <i data-feather="compass" class="mr-2"></i> Explore News
+        </a>
+        <button class="bg-gray-800 hover:bg-gray-700 px-6 py-3 rounded-lg font-medium transition inline-flex items-center justify-center">
+          <i data-feather="youtube" class="mr-2"></i> Watch Trailer
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRENDING (from API) -->
+  <section class="py-16 bg-gray-900">
+    <div class="container mx-auto px-4">
+      <div class="flex justify-between items-center mb-8">
+        <h2 class="text-3xl font-bold" data-aos="fade-right">🔥 Trending Games</h2>
+        <button id="refreshBtn" class="text-purple-400 hover:text-purple-300 flex items-center space-x-2 transition" data-aos="fade-left" title="Refresh">
+          <i data-feather="refresh-cw"></i><span>Refresh</span>
+        </button>
+      </div>
+      <div id="trending" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8"></div>
+    </div>
+  </section>
+
+  <!-- NEWS -->
+  <section id="news" class="py-16 bg-gray-800">
+    <div class="container mx-auto px-4">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+        <h2 class="text-3xl font-bold">📰 Latest News</h2>
+        <div class="flex items-center gap-3">
+          <input id="searchInput" type="text" placeholder="Search…" class="bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 focus:outline-none focus:border-purple-500" />
+          <div id="sourceTabs" class="flex flex-wrap gap-2"></div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div id="featured" class="bg-gray-900 rounded-xl overflow-hidden min-h-[16rem]"></div>
+        <div class="space-y-6">
+          <div id="list"></div>
+          <div class="text-center">
+            <button id="loadMoreBtn" class="bg-gray-900 hover:bg-gray-800 border border-gray-700 px-4 py-2 rounded-lg">Load more</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REVIEWS -->
+  <section id="reviews" class="py-16 bg-gray-900">
+    <div class="container mx-auto px-4">
+      <h2 class="text-3xl font-bold mb-6">⭐ Reviews</h2>
+      <div id="reviews-list" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+    </div>
+  </section>
+
+  <!-- GUIDES -->
+  <section id="guides" class="py-16 bg-gray-800">
+    <div class="container mx-auto px-4">
+      <h2 class="text-3xl font-bold mb-6">📚 Guides</h2>
+      <div id="guides-list" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
+    </div>
+  </section>
+
+  <!-- COMMUNITY -->
+  <section id="community" class="py-16 bg-gray-900">
+    <div class="container mx-auto px-4">
+      <h2 class="text-3xl font-bold mb-4">🌟 Community</h2>
+      <p class="text-gray-400">Join us on the journey. More features soon.</p>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="bg-gray-900 py-10 border-t border-gray-800">
+    <div class="container mx-auto px-4 text-center text-gray-400 text-sm">
+      © 2025 GamePulse. All rights reserved.
+    </div>
+  </footer>
+
+  <!-- APP SCRIPT -->
+  <script>
+    // ====== CONFIG (Render only) ======
+    const API_BASE = "https://gamepulse-news-service.onrender.com";
+
+    // ====== INIT LIBS ======
+    AOS.init({ duration: 700, once: true });
+    if (window.VANTA) {
+      VANTA.GLOBE({
+        el: "#vanta-bg", mouseControls: true, touchControls: true,
+        minHeight: 200, minWidth: 200, scale: 1.0, scaleMobile: 1.0,
+        color: 0x5f3dc4, backgroundColor: 0x0, size: 0.8
+      });
+    }
+
+    // ====== STATE ======
+    let ALL_ITEMS = [];
+    let filtered = [];
+    let sourceFilter = "All";
+    let searchTerm = "";
+    let visibleCount = 10;
+
+    // ====== HELPERS ======
+    const fallbackImg = (w,h) => `https://picsum.photos/${w}/${h}?random=${Math.floor(Math.random()*100000)}`;
+    const fmtTime = iso => { try { return new Date(iso || Date.now()).toLocaleString(); } catch { return ""; } };
+    const clean = html => (html || "").replace(/<[^>]+>/g,"");
+    const setHTML = (el, html) => { el.innerHTML = html; if (window.feather) feather.replace(); };
+
+    // ====== RENDERERS ======
+    function renderTrending(items) {
+      const tr = document.getElementById('trending');
+      if (!tr) return;
+      const top = items.filter(i => i.image).slice(0,3);
+      if (!top.length) { tr.innerHTML = `<div class="text-gray-400">No trending items yet.</div>`; return; }
+      tr.innerHTML = top.map((g, idx)=>`
+        <div class="bg-gray-800 rounded-xl overflow-hidden shadow transition hover:-translate-y-1">
+          <div class="relative h-48">
+            <img src="${g.image || fallbackImg(1024,576)}" class="w-full h-full object-cover" alt="">
+            <div class="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent"></div>
+            <div class="absolute bottom-3 left-3">
+              <span class="text-white text-xs ${idx===0?'bg-purple-600':'bg-red-500'} px-2 py-1 rounded">${idx===0?'NEW':'HOT'}</span>
+            </div>
+          </div>
+          <div class="p-5">
+            <div class="flex justify-between items-start mb-2">
+              <h3 class="text-lg font-bold">${g.title || 'Untitled'}</h3>
+              <span class="text-xs bg-gray-700 text-purple-300 px-2 py-1 rounded">${g.source || ''}</span>
+            </div>
+            <p class="text-gray-400 text-sm line-clamp-2">${clean(g.description)}</p>
+            <div class="mt-3 flex items-center justify-between">
+              <div class="flex gap-2"><span class="chip">News</span><span class="chip">${g.source || 'Source'}</span></div>
+              <a href="${g.link}" target="_blank" class="text-purple-400 hover:text-purple-300 text-sm">Open</a>
+            </div>
+          </div>
+        </div>
+      `).join('');
+      if (window.feather) feather.replace();
+    }
+
+    function renderFeatured(item) {
+      const el = document.getElementById('featured');
+      if (!el) return;
+      if (!item) { el.innerHTML = `<div class="p-6 text-gray-400">No news yet.</div>`; return; }
+      setHTML(el, `
+        <div class="relative h-64 md:h-80">
+          <img src="${item.image || fallbackImg(1200,630)}" alt="" class="w-full h-full object-cover">
+          <div class="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent"></div>
+          <div class="absolute bottom-0 left-0 p-6">
+            <span class="text-purple-400 text-xs">${item.source || ''}</span>
+            <h3 class="text-2xl font-bold mt-1">${item.title || ''}</h3>
+            <p class="text-gray-300 mt-2 line-clamp-2">${clean(item.description)}</p>
+            <div class="flex items-center mt-3 text-sm text-gray-400">
+              <i data-feather="clock" class="w-4 h-4 mr-1"></i><span>${fmtTime(item.pubDate)}</span>
+              <a href="${item.link}" target="_blank" class="ml-4 text-purple-300 hover:text-purple-200 underline">Read more</a>
+            </div>
+          </div>
+        </div>
+      `);
+    }
+
+    function renderList(items) {
+      const wrap = document.getElementById('list');
+      if (!wrap) return;
+      if (!items.length) { wrap.innerHTML = `<div class="p-6 text-gray-400 bg-gray-900 rounded-xl">No articles match your filter.</div>`; return; }
+      const slice = items.slice(0, visibleCount);
+      wrap.innerHTML = slice.map(i => `
+        <div class="bg-gray-900 rounded-xl p-6 flex">
+          <div class="w-24 h-24 mr-4 flex-shrink-0">
+            <img src="${i.image || fallbackImg(200,200)}" class="w-full h-full object-cover rounded-lg" alt="">
+          </div>
+          <div class="min-w-0">
+            <span class="text-blue-400 text-xs">${i.source || ''}</span>
+            <h4 class="font-bold mt-1">${i.title || ''}</h4>
+            <p class="text-gray-400 text-sm line-clamp-2">${clean(i.description)}</p>
+            <div class="flex items-center mt-2 space-x-2 text-xs text-gray-400">
+              <i data-feather="clock" class="w-3 h-3"></i>
+              <span>${fmtTime(i.pubDate)}</span>
+              <a href="${i.link}" target="_blank" class="ml-4 text-purple-400 hover:text-purple-300">Open</a>
+            </div>
+          </div>
+        </div>
+      `).join('');
+      if (window.feather) feather.replace();
+      document.getElementById('loadMoreBtn').classList.toggle('hidden', items.length <= visibleCount);
+    }
+
+    function buildSourceTabs(items) {
+      const tabs = document.getElementById('sourceTabs');
+      if (!tabs) return;
+      const sources = Array.from(new Set(items.map(i => i.source).filter(Boolean))).sort();
+      const btn = (name, active=false) =>
+        `<button data-source="${name}" class="px-3 py-1 rounded-lg border ${active?'border-purple-500 text-purple-300':'border-gray-700 text-gray-300 hover:border-purple-500 hover:text-purple-300'}">${name}</button>`;
+      tabs.innerHTML = [btn("All", true), ...sources.map(s => btn(s))].join('');
+      tabs.querySelectorAll('button').forEach(b=>{
+        b.addEventListener('click', ()=>{
+          sourceFilter = b.dataset.source;
+          tabs.querySelectorAll('button').forEach(x=>x.classList.remove('border-purple-500','text-purple-300'));
+          b.classList.add('border-purple-500','text-purple-300');
+          applyFilters();
+        });
+      });
+    }
+
+    function applyFilters() {
+      const term = searchTerm.trim().toLowerCase();
+      filtered = ALL_ITEMS.filter(i => {
+        const okSource = (sourceFilter === "All") || ((i.source||"").toLowerCase() === sourceFilter.toLowerCase());
+        const text = (i.title || '') + ' ' + clean(i.description || '');
+        const okSearch = !term || text.toLowerCase().includes(term);
+        return okSource && okSearch;
+      });
+      visibleCount = 10;
+      renderFeatured(filtered[0]);
+      renderList(filtered.slice(1));
+    }
+
+    // ====== Category lists (Reviews/Guides) ======
+    const articleCard = (i) => `
+      <div class="bg-gray-900 rounded-xl p-5 flex">
+        <div class="w-24 h-24 mr-4 flex-shrink-0">
+          <img src="${i.image || `https://picsum.photos/200?random=${Math.random()}`}" class="w-full h-full rounded-lg object-cover" alt="">
+        </div>
+        <div class="min-w-0">
+          <div class="text-xs text-blue-400">${i.source || ""}</div>
+          <div class="font-semibold mt-1">${i.title || ""}</div>
+          <div class="text-gray-400 text-sm line-clamp-2">${clean(i.description)}</div>
+          <div class="text-xs text-gray-500 mt-1">${fmtTime(i.pubDate)}</div>
+          <a href="${i.link}" target="_blank" class="inline-block mt-2 text-purple-400 hover:text-purple-300 text-sm">Open</a>
+        </div>
+      </div>`;
+
+    async function loadCategory(terms, containerId, limit=12) {
+      const el = document.getElementById(containerId);
+      if (!el) return;
+      el.innerHTML = '<div class="p-4 text-gray-400">Loading…</div>';
+      try {
+        let items = [];
+        for (const t of terms) {
+          const r = await fetch(`${API_BASE}/api/news?limit=${limit}&q=${encodeURIComponent(t)}`);
+          const d = await r.json();
+          if (Array.isArray(d)) items = items.concat(d);
+        }
+        const seen = new Set();
+        items = items.filter(x => {
+          const k = x.id || x.link;
+          if (!k || seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        items.sort((a,b)=> new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
+        el.innerHTML = items.slice(0, limit).map(articleCard).join('') || '<div class="p-4 text-gray-400">No results.</div>';
+        if (window.feather) feather.replace();
+      } catch (e) {
+        el.innerHTML = '<div class="p-4 text-red-400">Failed to load.</div>';
+        console.error(containerId, e);
+      }
+    }
+
+    // ====== FETCH NEWS ======
+    async function fetchNewsAndRender() {
+      const featured = document.getElementById('featured');
+      const list = document.getElementById('list');
+      const trending = document.getElementById('trending');
+      if (featured) featured.innerHTML = '<div class="p-6">Loading…</div>';
+      if (list) list.innerHTML = '';
+      if (trending) trending.innerHTML = '';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/news?limit=40`);
+        const data = await res.json();
+        ALL_ITEMS = Array.isArray(data) ? data : [];
+        if (!ALL_ITEMS.length) throw new Error('Empty');
+        buildSourceTabs(ALL_ITEMS);
+        renderTrending(ALL_ITEMS);
+        applyFilters();
+      } catch (e) {
+        setHTML(featured, '<div class="p-6 text-red-400">Failed to load news.</div>');
+        console.error('NEWS ERROR', e);
+      }
+    }
+
+    // ====== NAV UX ======
+    function initNav() {
+      const links = document.querySelectorAll('[data-nav]');
+      const mobile = document.getElementById('mobileMenu');
+      links.forEach(a => a.addEventListener('click', ()=> mobile.classList.add('hidden')));
+
+      const sections = ['home','news','reviews','guides','community'].map(id=>document.getElementById(id));
+      const navs = Array.from(links);
+      const io = new IntersectionObserver(entries=>{
+        entries.forEach(e=>{
+          if (e.isIntersecting) {
+            const id = e.target.id;
+            navs.forEach(n => n.classList.toggle('nav-active', n.getAttribute('href') === '#'+id));
+          }
+        });
+      }, {threshold: 0.6});
+      sections.forEach(s=>s && io.observe(s));
+
+      document.getElementById('menuBtn').addEventListener('click', ()=> mobile.classList.toggle('hidden'));
+    }
+
+    // ====== EVENTS ======
+    document.getElementById('loadMoreBtn').addEventListener('click', ()=>{
+      visibleCount += 10;
+      renderList(filtered.slice(1));
+    });
+    document.getElementById('refreshBtn').addEventListener('click', fetchNewsAndRender);
+    document.getElementById('searchInput').addEventListener('input', (e)=>{
+      searchTerm = e.target.value;
+      applyFilters();
+    });
+
+    // ====== BOOT ======
+    if (window.feather) feather.replace();
+    initNav();
+    fetchNewsAndRender();
+    // קטגוריות בזמן אמת
+    loadCategory(['review','our review','verdict','score','review:'], 'reviews-list', 16);
+    loadCategory(['guide','how to','tips','walkthrough'], 'guides-list', 16);
+  </script>
+</body>
+</html>
