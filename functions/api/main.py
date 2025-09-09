@@ -1,28 +1,28 @@
 # main.py — GamePulse News Microservice (Python/FastAPI, Render-ready)
-import os, re, asyncio
+
+import os, re, asyncio, hashlib
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-import httpx, feedparser
+import httpx, feedparser, bleach
 from cachetools import TTLCache
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="GamePulse News Service", version="1.0.0")
 
-# CORS פתוח לפיתוח; אחר כך אפשר להגביל לדומיין שלך
+# CORS פתוח (לפרודקשן אפשר להגביל לדומיין שלך)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],     # פתוח – לפרודקשן אפשר להגביל לדומיין הסטטי שלך
-    allow_credentials=False, # חשוב: אל תשאיר True יחד עם "*"
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
+# קונפיג
 PORT = int(os.getenv("PORT", "3000"))
 
-# מקורות RSS (ניתן לשנות דרך ENV ב-Render בלי לגעת בקוד)
 SOURCES = [
     {"name": "IGN",       "env": "IGN_RSS",       "default": "https://feeds.ign.com/ign/all"},
     {"name": "Eurogamer", "env": "EUROGAMER_RSS", "default": "https://www.eurogamer.net/?format=rss"},
@@ -31,115 +31,153 @@ SOURCES = [
     {"name": "Escapist",  "env": "ESCAPIST_RSS",  "default": "https://www.escapistmagazine.com/v2/feed/"},
 ]
 
-def build_sources() -> List[Dict[str, str]]:
-    return [{"name": s["name"], "url": os.getenv(s["env"], s["default"])} for s in SOURCES]
+# Cache + Store
+cache = TTLCache(maxsize=32, ttl=int(os.getenv("CACHE_TTL", "600")))  # ברירת מחדל 10 דק'
+ITEM_STORE: Dict[str, Dict[str, Any]] = {}
 
-# Cache בזיכרון — ברירת מחדל 10 דק׳ (600 שניות). אפשר לצמצם:
-cache = TTLCache(maxsize=32, ttl=600)
+ALLOWED_TAGS = ["p","ul","ol","li","br","strong","em","blockquote","code","pre","a"]
+ALLOWED_ATTRS = {"a": ["href","title","target","rel"]}
 
-IMG_TAG_RE = re.compile(r'<img[^>]+src=["\']([^"\']+)["\']', re.IGNORECASE)
+def sanitize_html(html: Optional[str]) -> str:
+    return bleach.clean(html or "", tags=ALLOWED_TAGS, attributes=ALLOWED_ATTRS, strip=True)
 
-def pick_image(entry: Dict[str, Any]) -> Optional[str]:
-    # media:content של RSS
-    mc = entry.get("media_content")
-    if isinstance(mc, list) and mc and mc[0].get("url"):
-        return mc[0]["url"]
-    # enclosure
-    en = entry.get("enclosures") or []
-    if en:
-        return en[0].get("href") or en[0].get("url")
-    # לחלץ <img src="..."> מה-HTML
-    html = ""
-    if entry.get("content"):
-        html = entry["content"][0].get("value", "")
-    elif entry.get("summary"):
-        html = entry["summary"]
-    if html:
-        m = IMG_TAG_RE.search(html)
-        if m:
-            return m.group(1)
+def parse_date(entry: dict) -> Optional[str]:
+    for key in ("published", "updated", "pubDate"):
+        if entry.get(key):
+            try:
+                # feedparser מוסיף parsed
+                if entry.get(key + "_parsed"):
+                    dt = datetime(*entry[key + "_parsed"][:6])
+                else:
+                    dt = datetime.fromisoformat(entry[key])
+                return dt.isoformat()
+            except Exception:
+                pass
     return None
 
-def normalize(entry: Dict[str, Any], source_name: str) -> Dict[str, Any]:
-    # תאריך ISO
-    iso_date = None
-    for key in ("published_parsed", "updated_parsed"):
-        if entry.get(key):
-            iso_date = datetime(*entry[key][:6]).isoformat()
-            break
-    return {
-        "id": entry.get("id") or entry.get("guid") or entry.get("link"),
-        "title": (entry.get("title") or "").strip(),
-        "description": (entry.get("summary") or "").strip(),
-        "link": entry.get("link"),
-        "image": pick_image(entry),
-        "pubDate": iso_date,
-        "source": source_name,
-    }
+def extract_image(entry: dict) -> Optional[str]:
+    # media:content / media:thumbnail
+    for field in ("media_content", "media_thumbnail"):
+        if entry.get(field):
+            try:
+                url = entry[field][0].get("url")
+                if url:
+                    return url
+            except Exception:
+                pass
+    # enclosure
+    for link in entry.get("links", []):
+        if link.get("rel") == "enclosure" and link.get("type", "").startswith("image"):
+            return link.get("href")
+    # img בתוך summary/content
+    html = (entry.get("summary") or "") + "".join([c.get("value","") for c in entry.get("content", [])])
+    m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', html, flags=re.I)
+    return m.group(1) if m else None
 
-async def fetch_feed(client: httpx.AsyncClient, name: str, url: str) -> List[Dict[str, Any]]:
-    try:
-        r = await client.get(url, timeout=20.0)
+async def fetch_feed(url: str) -> List[dict]:
+    headers = {"User-Agent": "GamePulseBot/1.0 (+https://gamepulse-site)"}  # UA מנומס
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.get(url, headers=headers)
         r.raise_for_status()
-        parsed = feedparser.parse(r.content)
-        return [normalize(e, name) for e in parsed.get("entries", [])[:20]]
-    except Exception as exc:
-        print(f"[Feed Error] {name}: {exc}")
-        return []
+        return feedparser.parse(r.text).entries
 
-async def get_all_news() -> List[Dict[str, Any]]:
-    key = "news:all"
-    if key in cache:
-        return cache[key]
-
-    sources = build_sources()
-    async with httpx.AsyncClient(
-        follow_redirects=True, headers={"User-Agent": "GamePulseBot/1.0"}
-    ) as client:
-        tasks = [fetch_feed(client, s["name"], s["url"]) for s in sources]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    all_items: List[Dict[str, Any]] = []
-    for res in results:
-        if isinstance(res, list):
-            all_items.extend(res)
-
-    # מיון לפי תאריך
-    def sort_key(x):
-        try:
-            return datetime.fromisoformat(x.get("pubDate") or "1970-01-01T00:00:00")
-        except Exception:
-            return datetime(1970, 1, 1)
-    all_items.sort(key=sort_key, reverse=True)
-
-    cache[key] = all_items
-    return all_items
+def make_id(link: str) -> str:
+    return hashlib.md5(link.encode("utf-8")).hexdigest()
 
 @app.get("/api/ping")
-async def ping():
-    return {"ok": True, "service": "gamepulse-news", "time": datetime.utcnow().isoformat()}
+def ping():
+    return {"ok": True, "ts": datetime.utcnow().isoformat() + "Z"}
 
 @app.get("/api/news")
-async def news(
-    q: Optional[str] = Query(None, description="חיפוש בכותרת/תיאור"),
-    limit: int = Query(20, ge=1, le=100, description="כמות תוצאות"),
-    source: Optional[str] = Query(None, description="פילטר מקורות: IGN,Eurogamer,..."),
-):
-    items = await get_all_news()
+async def news(limit: int = Query(20, ge=1, le=100), q: Optional[str] = None) -> List[dict]:
+    """
+    מאחד RSS ממקורות, מחזיר רשימה אחודה ממוינת לפי תאריך.
+    """
+    items: List[dict] = []
+    query = (q or "").strip().lower()
 
-    if source:
-        wanted = {s.strip().lower() for s in source.split(",")}
-        items = [i for i in items if (i.get("source") or "").lower() in wanted]
+    for src in SOURCES:
+        url = os.getenv(src["env"], src["default"])
+        entries = cache.get(url)
+        if entries is None:
+            try:
+                entries = await fetch_feed(url)
+                cache[url] = entries
+            except Exception:
+                entries = []
 
-    if q:
-        term = q.lower()
-        items = [
-            i for i in items
-            if term in (i.get("title") or "").lower() or term in (i.get("description") or "").lower()
-        ]
+        for e in entries:
+            link = e.get("link")
+            title = e.get("title", "").strip()
+            if not link or not title:
+                continue
+            desc = e.get("summary") or e.get("description") or ""
+            content_html = ""
+            if e.get("content"):
+                try:
+                    content_html = e["content"][0].get("value", "") or ""
+                except Exception:
+                    pass
 
+            # סינון חיפוש (על הכותרת + תיאור)
+            if query:
+                text = (title + " " + desc).lower()
+                if query not in text:
+                    continue
+
+            img = extract_image(e)
+            pub = parse_date(e)
+            _id = make_id(link)
+
+            # נשמור עותק "מורחב" להצגה במודאל (עם HTML מסונן)
+            ITEM_STORE[_id] = {
+                "id": _id,
+                "title": title,
+                "link": link,
+                "source": src["name"],
+                "pubDate": pub,
+                "image": img,
+                "description": desc,
+                "content_html": sanitize_html(content_html or desc)[:4000],  # בטוח + מוגבל
+            }
+
+            # ברספונס הרשימה אין צורך בכל ה-HTML
+            items.append({
+                "id": _id,
+                "title": title,
+                "link": link,
+                "source": src["name"],
+                "pubDate": pub,
+                "image": img,
+                "description": desc,
+            })
+
+    # מיון לפי תאריך ולקיחת limit
+    def sort_key(x):  # None דוחף לסוף
+        return x["pubDate"] or ""
+    items.sort(key=sort_key, reverse=True)
     return items[:limit]
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=PORT, reload=True)
+@app.get("/api/article/{item_id}")
+def get_article(item_id: str) -> dict:
+    """
+    מחזיר פרטי כתבה להצגה במודאל באתר (תוכן מתוך ה-RSS בלבד, מסונן).
+    """
+    item = ITEM_STORE.get(item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {
+        "id": item["id"],
+        "title": item["title"],
+        "source": item["source"],
+        "link": item["link"],
+        "pubDate": item["pubDate"],
+        "image": item.get("image"),
+        "content_html": item.get("content_html") or f"<p>{sanitize_html(item.get('description'))}</p>",
+        "attribution": f"Preview from {item['source']} (RSS). Full story at the source.",
+    }
+
+# אופציונלי: שורש ידידותי
+@app.get("/", tags=["meta"])
+def root():
+    return {"status": "ok", "docs": "/docs", "ping": "/api/ping", "news": "/api/news?limit=5"}
