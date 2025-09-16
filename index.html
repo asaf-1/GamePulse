@@ -19,11 +19,10 @@
     html { scroll-behavior: smooth; }
     .gradient-bg { background: linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%); }
     .nav-active { color:#a78bfa !important; }
-    /* בלי @apply – CSS רגיל */
-    .chip{
-      display:inline-block;font-size:.75rem;line-height:1rem;
-      background-color:#374151;padding:.25rem .5rem;border-radius:.25rem
-    }
+    .chip{display:inline-block;font-size:.75rem;line-height:1rem;background-color:#374151;padding:.25rem .5rem;border-radius:.25rem}
+    /* יופי לתוכן שמגיע מה-RSS בתוך המודאל */
+    #modal-body img { max-width: 100%; height: auto; border-radius: .5rem; }
+    #modal-body p { margin-bottom: .75rem; }
   </style>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans">
@@ -34,7 +33,6 @@
       <a href="#home" class="flex items-center space-x-2 font-bold text-2xl bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
         <i data-feather="activity" class="text-purple-300"></i><span>GamePulse</span>
       </a>
-
       <!-- desktop -->
       <div class="hidden md:flex items-center space-x-8 font-medium">
         <a data-nav href="#home" class="hover:text-purple-400 transition">Home</a>
@@ -43,13 +41,11 @@
         <a data-nav href="#guides" class="hover:text-purple-400 transition">Guides</a>
         <a data-nav href="#community" class="hover:text-purple-400 transition">Community</a>
       </div>
-
       <!-- mobile -->
       <button id="menuBtn" class="md:hidden text-gray-300 hover:text-white" aria-label="menu">
         <i data-feather="menu"></i>
       </button>
     </div>
-
     <!-- mobile dropdown -->
     <div id="mobileMenu" class="hidden md:hidden border-t border-gray-800">
       <div class="container mx-auto px-4 py-3 space-y-2">
@@ -150,17 +146,21 @@
     </div>
   </footer>
 
-  <!-- ARTICLE MODAL -->
+  <!-- ARTICLE MODAL (scrollable) -->
   <div id="article-modal" class="fixed inset-0 bg-black/70 hidden z-[1000]">
-    <div class="max-w-3xl mx-auto my-8 bg-gray-900 rounded-2xl overflow-hidden shadow-xl">
+    <!-- max-h + flex-col מאפשרים גוף גליל -->
+    <div class="max-w-3xl mx-auto my-8 bg-gray-900 rounded-2xl shadow-xl max-h-[90vh] flex flex-col overscroll-contain">
       <div class="flex items-center justify-between px-5 py-4 border-b border-gray-800">
         <h3 id="modal-title" class="text-xl font-bold">Article</h3>
         <button id="modal-close" class="text-gray-400 hover:text-white" aria-label="Close">✕</button>
       </div>
       <div id="modal-meta" class="px-5 pt-3 text-sm text-gray-400"></div>
       <div id="modal-image" class="px-5 pt-3"></div>
-      <div id="modal-body" class="px-5 pt-3 pb-6 leading-relaxed text-gray-200"></div>
-      <div class="px-5 pb-5">
+      <!-- האזור הגליל -->
+      <div id="modal-scroll" class="px-5 pt-3 pb-6 overflow-y-auto grow">
+        <div id="modal-body" class="leading-relaxed text-gray-200"></div>
+      </div>
+      <div class="px-5 pb-5 border-t border-gray-800">
         <a id="modal-source" target="_blank" rel="noopener" class="text-purple-400 hover:text-purple-300 underline">Read full on source</a>
       </div>
     </div>
@@ -399,15 +399,20 @@
       applyFilters();
     });
 
-    // ====== MODAL LOGIC ======
+    // ====== MODAL LOGIC (scrollable + lock background) ======
     const modal = document.getElementById('article-modal');
     const mTitle = document.getElementById('modal-title');
     const mMeta  = document.getElementById('modal-meta');
     const mImg   = document.getElementById('modal-image');
+    const mScroll = document.getElementById('modal-scroll');
     const mBody  = document.getElementById('modal-body');
     const mSrc   = document.getElementById('modal-source');
 
-    function closeModal(){ modal.classList.add('hidden'); }
+    function closeModal(){
+      modal.classList.add('hidden');
+      document.body.classList.remove('overflow-hidden');
+      if (mScroll) mScroll.scrollTop = 0;
+    }
     document.getElementById('modal-close').addEventListener('click', closeModal);
     modal.addEventListener('click', (e)=>{ if (e.target === modal) closeModal(); });
 
@@ -421,6 +426,8 @@
         mImg.innerHTML     = a.image ? `<img src="${a.image}" class="w-full rounded-lg max-h-[420px] object-cover" alt="">` : '';
         mBody.innerHTML    = a.content_html || '<p>No preview available.</p>';
         mSrc.href          = a.link;
+
+        document.body.classList.add('overflow-hidden'); // נועל גלילת רקע
         modal.classList.remove('hidden');
         if (window.feather) feather.replace();
       }catch(err){
