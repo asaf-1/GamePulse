@@ -1,0 +1,91 @@
+name: CI & Deploy (Pages + optional Render)
+
+on:
+  push:
+    branches: [ "master" ]     # ← אם יש לך main, שנה כאן ל main
+  pull_request:
+    branches: [ "master" ]     # ← ואם יש לך main, שנה גם כאן
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # נזהה אם יש פרויקט Node
+      - name: Detect Node project
+        id: detect
+        run: |
+          if [ -f package.json ]; then echo "has_node=true" >> $GITHUB_OUTPUT; else echo "has_node=false" >> $GITHUB_OUTPUT; fi
+
+      - name: Setup Node
+        if: steps.detect.outputs.has_node == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # התקנות: npm ci אם יש lock, אחרת npm install. אם אין package.json – מדלגים.
+      - name: Install deps
+        if: steps.detect.outputs.has_node == 'true'
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+      # Build (אם יש סקריפט build – ירוץ; אם אין – ידלג בלי להפיל את ה־job)
+      - name: Build (if present)
+        if: steps.detect.outputs.has_node == 'true'
+        run: npm run -s build --if-present
+
+      # Tests (אם יש סקריפט test – ירוץ; אם אין – ידלג)
+      - name: Test (if present)
+        if: steps.detect.outputs.has_node == 'true'
+        run: npm run -s test --if-present
+
+      # הכנת ארטיפקט ל-Pages:
+      # עדיפות ל-dist/ (לרוב Vite/React), אחרת site/, אחרת שורש (אם יש index.html)
+      - name: Prepare Pages artifact
+        run: |
+          mkdir -p _site
+          if [ -d dist ]; then
+            rsync -a dist/ _site/
+          elif [ -d site ]; then
+            rsync -a --exclude=node_modules --exclude=.git site/ _site/
+          elif [ -f index.html ]; then
+            rsync -a --exclude=node_modules --exclude=.git ./ _site/
+          else
+            echo "No static files found (dist/, site/, or index.html)."; exit 1
+          fi
+          # לכבות עיבוד Jekyll
+          touch _site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy_pages:
+    needs: build_and_test
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # אופציונלי: טריגר ל-Render אם תוסיף סיקרט בשם RENDER_DEPLOY_HOOK_URL
+  trigger_render:
+    needs: build_and_test
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push' && secrets.RENDER_DEPLOY_HOOK_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Deploy (optional)
+        run: curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
