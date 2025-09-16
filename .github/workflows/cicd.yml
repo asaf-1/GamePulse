@@ -20,34 +20,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Detect Node project
         id: detect
         run: |
           if [ -f package.json ]; then echo "has_node=true" >> $GITHUB_OUTPUT; else echo "has_node=false" >> $GITHUB_OUTPUT; fi
+
       - name: Setup Node
         if: steps.detect.outputs.has_node == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
+
       - name: Install deps
         if: steps.detect.outputs.has_node == 'true'
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
       - name: Build (if present)
         if: steps.detect.outputs.has_node == 'true'
         run: npm run -s build --if-present
+
       - name: Test (if present)
         if: steps.detect.outputs.has_node == 'true'
         run: npm run -s test --if-present
+
+      # מכין מה לבנות ל-Pages: dist/ > site/ > קבצים בשורש עם index.html
       - name: Prepare Pages artifact
         run: |
           mkdir -p _site
-          if [ -d dist ]; then rsync -a dist/ _site/; \
-          elif [ -d site ]; then rsync -a --exclude=node_modules --exclude=.git site/ _site/; \
-          elif [ -f index.html ]; then rsync -a --exclude=node_modules --exclude=.git ./ _site/; \
-          else echo "No static files found"; exit 1; fi
+          if [ -d dist ]; then
+            rsync -a dist/ _site/
+          elif [ -d site ]; then
+            rsync -a --exclude=node_modules --exclude=.git site/ _site/
+          elif [ -f index.html ]; then
+            rsync -a --exclude=node_modules --exclude=.git ./ _site/
+          else
+            echo "No static files found (dist/, site/, or index.html)."; exit 1
+          fi
           touch _site/.nojekyll
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -59,7 +72,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to GitHub Pages
-        id: deployment
         uses: actions/deploy-pages@v4
 
   trigger_render:
@@ -68,5 +80,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render Deploy (skips if no secret)
-        if: ${{ secrets.RENDER_DEPLOY_HOOK_URL && secrets.RENDER_DEPLOY_HOOK_URL != '' }}
-        run: curl -fsSL -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "No RENDER_DEPLOY_HOOK_URL secret set; skipping."
+            exit 0
+          fi
+          curl -fsSL -X POST "$HOOK"
